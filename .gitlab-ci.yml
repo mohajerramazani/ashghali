@@ -1,0 +1,55 @@
+before_script:
+    - apt-get update -yqq
+    - apt-get install git -yqq
+
+build:frontend:
+  cache:
+    paths:
+      - frontend/node_modules/
+  stage: build
+  image: node:latest
+  environment: Stage
+  artifacts:
+    paths:
+    - frontend/dist/radyabs-admin
+    expire_in: 1 day
+  only:
+    - master
+  script:
+    - cd frontend
+    - npm install
+    - node_modules/@angular/cli/bin/ng build --aot --prod --build-optimizer
+
+deploy:backend:
+  stage: build
+#  needs: ["build:backend"]  
+  environment: Stage
+  only:
+    - master
+  before_script:
+    - echo "$USERNAME"
+    - chmod 600 $SSH_PRIVATE_KEY
+    - mkdir "${HOME}/.ssh"
+    - ssh-keyscan -p 2222 -H -T 10 $SERVER_IP >> "${HOME}/.ssh/known_hosts"
+    - apt-get update -yqq
+    - apt-get install rsync -yqq
+  script:
+    - rm backend/resources/views/welcome.blade.php
+    - rsync -rzps --no-p --no-g --no-o --rsh=ssh -e 'ssh -p 2222 -i '$SSH_PRIVATE_KEY ./backend/ $USERNAME@$SERVER_IP:$APP_PATH
+
+deploy:frontend:
+  stage: deploy
+  needs: ["build:frontend"]
+  environment: Stage
+  only:
+    - master
+  before_script:
+    - chmod 600 $SSH_PRIVATE_KEY
+    - mkdir "${HOME}/.ssh"
+    - ssh-keyscan -p 2222 -H -T 10 $SERVER_IP >> "${HOME}/.ssh/known_hosts"
+    - apt-get update -yqq
+    - apt-get install rsync -yqq
+  script:
+    - rsync -rzps --no-p --no-g --no-o --rsh=ssh -e 'ssh -p 2222 -i '$SSH_PRIVATE_KEY ./frontend/dist/radyabs-admin/ $USERNAME@$SERVER_IP:$APP_PATH/public/
+    - rsync -rzps --no-p --no-g --no-o --rsh=ssh -e 'ssh -p 2222 -i '$SSH_PRIVATE_KEY ./frontend/dist/radyabs-admin/index.html $USERNAME@$SERVER_IP:$APP_PATH/resources/views/welcome.blade.php
+    
